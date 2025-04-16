@@ -2,6 +2,8 @@ package academy.challenger.lastchallenge;
 
 import academy.challenger.challenge.Challenge;
 import academy.challenger.challenge.ChallengeRepository;
+import academy.challenger.exception.CustomException;
+import academy.challenger.exception.ErrorCode;
 import academy.challenger.user.User;
 import academy.challenger.user.UserRepository;
 import jakarta.transaction.Transactional;
@@ -17,13 +19,19 @@ public class LastChallengeService {
     private final LastChallengeRepository lastChallengeRepository;
     private final ChallengeRepository challengeRepository;
     private final UserRepository userRepository;
+    private final AIReviewService aiReviewService;
 
     @Transactional
     public LastChallengeResponse save(LastChallengeRequest lastChallengeRequest) {
         User user = userRepository.findById(lastChallengeRequest.userId())
-                .orElseThrow(() -> new IllegalArgumentException("해당 ID의 User를 찾을 수 없습니다: " + lastChallengeRequest.userId()));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         Challenge challenge = challengeRepository.findById(lastChallengeRequest.challengeId())
-                .orElseThrow(() -> new IllegalArgumentException("해당 ID의 Challenge를 찾을 수 없습니다: " + lastChallengeRequest.challengeId()));
+                .orElseThrow(() -> new CustomException(ErrorCode.CHALLENGE_NOT_FOUND));
+
+        String review = aiReviewService.getReview(
+                lastChallengeRequest.retrospection(),
+                user.getName()
+        );
 
         LastChallenge lastChallenge = new LastChallenge(
                 user,
@@ -32,7 +40,7 @@ public class LastChallengeService {
                 challenge.getStartDate(),
                 LocalDate.now(),
                 lastChallengeRequest.retrospection(),
-                "대충 평가하는 내용~"
+                review
         );
 
         lastChallengeRepository.save(lastChallenge);
@@ -42,7 +50,8 @@ public class LastChallengeService {
                 lastChallenge.getUser().getId(),
                 lastChallenge.getTitle(),
                 lastChallenge.getDescription(),
-                lastChallenge.getStartDate() + " - " + lastChallenge.getEndDate(),
+                lastChallenge.getStartDate(),
+                lastChallenge.getEndDate(),
                 lastChallenge.getRetrospection(),
                 lastChallenge.getAssessment()
         );
@@ -50,15 +59,16 @@ public class LastChallengeService {
 
     public List<LastChallengeResponse> getAllById(long id) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("해당 ID의 User를 찾을 수 없습니다: " + id));
-        List<LastChallenge> lastChallenges = lastChallengeRepository.findAllByUser(user);
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        List<LastChallenge> lastChallenges = lastChallengeRepository.findAllByUserOrderByIdDesc(user);
         return lastChallenges.stream()
                 .map(lastChallenge -> new LastChallengeResponse(
                         lastChallenge.getId(),
                         lastChallenge.getUser().getId(),
                         lastChallenge.getTitle(),
                         lastChallenge.getDescription(),
-                        lastChallenge.getStartDate() + " - " + lastChallenge.getEndDate(),
+                        lastChallenge.getStartDate(),
+                        lastChallenge.getEndDate(),
                         lastChallenge.getRetrospection(),
                         lastChallenge.getAssessment()
                 ))
